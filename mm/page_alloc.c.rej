@@ -1,0 +1,13 @@
+--- mm/page_alloc.c
++++ mm/page_alloc.c
+@@ -2293,8 +2318,9 @@
+ {
+ 	enum zone_type high_zoneidx = gfp_zone(gfp_mask);
+ 	struct zone *preferred_zone;
+-	struct page *page;
++	struct page *page = NULL;
+ 	int migratetype = allocflags_to_migratetype(gfp_mask);
++	unsigned int cpuset_mems_cookie;
+ 
+ 	gfp_mask &= gfp_allowed_mask;
+ 

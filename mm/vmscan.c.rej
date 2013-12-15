@@ -1,0 +1,82 @@
+--- mm/vmscan.c
++++ mm/vmscan.c
+@@ -1499,6 +1590,7 @@
+ 	unsigned long nr_taken;
+ 	unsigned long nr_anon;
+ 	unsigned long nr_file;
++	isolate_mode_t reclaim_mode = ISOLATE_INACTIVE;
+ 
+ 	while (unlikely(too_many_isolated(zone, file, sc))) {
+ 		congestion_wait(BLK_RW_ASYNC, HZ/10);
+@@ -1509,15 +1601,21 @@
+ 	}
+ 
+ 	set_reclaim_mode(priority, sc, false);
++	if (sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM)
++		reclaim_mode |= ISOLATE_ACTIVE;
++
+ 	lru_add_drain();
++
++	if (!sc->may_unmap)
++		reclaim_mode |= ISOLATE_UNMAPPED;
++	if (!sc->may_writepage)
++		reclaim_mode |= ISOLATE_CLEAN;
++
+ 	spin_lock_irq(&zone->lru_lock);
+ 
+ 	if (scanning_global_lru(sc)) {
+-		nr_taken = isolate_pages_global(nr_to_scan,
+-			&page_list, &nr_scanned, sc->order,
+-			sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM ?
+-					ISOLATE_BOTH : ISOLATE_INACTIVE,
+-			zone, 0, file);
++		nr_taken = isolate_pages_global(nr_to_scan, &page_list,
++			&nr_scanned, sc->order, reclaim_mode, zone, 0, file);
+ 		zone->pages_scanned += nr_scanned;
+ 		if (current_is_kswapd())
+ 			__count_zone_vm_events(PGSCAN_KSWAPD, zone,
+@@ -1526,12 +1624,9 @@
+ 			__count_zone_vm_events(PGSCAN_DIRECT, zone,
+ 					       nr_scanned);
+ 	} else {
+-		nr_taken = mem_cgroup_isolate_pages(nr_to_scan,
+-			&page_list, &nr_scanned, sc->order,
+-			sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM ?
+-					ISOLATE_BOTH : ISOLATE_INACTIVE,
+-			zone, sc->mem_cgroup,
+-			0, file);
++		nr_taken = mem_cgroup_isolate_pages(nr_to_scan, &page_list,
++			&nr_scanned, sc->order, reclaim_mode, zone,
++			sc->mem_cgroup, 0, file);
+ 		/*
+ 		 * mem_cgroup_isolate_pages() keeps track of
+ 		 * scanned pages on its own.
+@@ -1633,19 +1728,26 @@
+ 	struct page *page;
+ 	struct zone_reclaim_stat *reclaim_stat = get_reclaim_stat(zone, sc);
+ 	unsigned long nr_rotated = 0;
++	isolate_mode_t reclaim_mode = ISOLATE_ACTIVE;
+ 
+ 	lru_add_drain();
++
++	if (!sc->may_unmap)
++		reclaim_mode |= ISOLATE_UNMAPPED;
++	if (!sc->may_writepage)
++		reclaim_mode |= ISOLATE_CLEAN;
++
+ 	spin_lock_irq(&zone->lru_lock);
+ 	if (scanning_global_lru(sc)) {
+ 		nr_taken = isolate_pages_global(nr_pages, &l_hold,
+ 						&pgscanned, sc->order,
+-						ISOLATE_ACTIVE, zone,
++						reclaim_mode, zone,
+ 						1, file);
+ 		zone->pages_scanned += pgscanned;
+ 	} else {
+ 		nr_taken = mem_cgroup_isolate_pages(nr_pages, &l_hold,
+ 						&pgscanned, sc->order,
+-						ISOLATE_ACTIVE, zone,
++						reclaim_mode, zone,
+ 						sc->mem_cgroup, 1, file);
+ 		/*
+ 		 * mem_cgroup_isolate_pages() keeps track of
